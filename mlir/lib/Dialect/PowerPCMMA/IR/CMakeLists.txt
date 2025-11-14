@@ -6,6 +6,7 @@ add_mlir_dialect_library(MLIRPowerPCMMADialect
 
   DEPENDS
   MLIRPowerPCMMAOpsIncGen
+  MLIRPowerPCMMAOpsTypesIncGen
 
   LINK_LIBS PUBLIC
   MLIRIR
