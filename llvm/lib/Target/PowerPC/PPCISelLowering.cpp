@@ -257,6 +257,24 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setTruncStoreAction(MVT::f32, MVT::f16, Expand);
   }
 
+  if (Subtarget.hasFloat16()) {
+    // TypeSoftPromoteHalf handles load/store automatically
+
+    if (Subtarget.hasP9Vector()) {
+      // P9+:Hardware instructions xscvdphp/xscvhpdp for conversions
+      setOperationAction(ISD::FP_EXTEND, MVT::f32, Legal); // half->float
+      setOperationAction(ISD::FP_EXTEND, MVT::f64, Legal); // half->double
+      setOperationAction(ISD::FP_ROUND, MVT::f16, Legal); // float/double->half
+    }
+    else {
+      //P7/P8: Library calls ensure correct rounding
+      setOperationAction(ISD::FP_EXTEND, MVT::f32, LibCall); // __extendhfsf2
+      setOperationAction(ISD::FP_EXTEND, MVT::f64, LibCall); // __extendhfdf2
+      setOperationAction(ISD::FP_ROUND, MVT::f16,
+                         LibCall); // __truncsfhf2 / __truncdfhf2
+    }
+  }
+
   setTruncStoreAction(MVT::f64, MVT::f32, Expand);
 
   // PowerPC has pre-inc load and store's.

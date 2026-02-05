@@ -357,6 +357,9 @@ public:
 
   bool hasBitIntType() const override { return true; }
 
+  // Enable _FLoat16 type on Power7+
+  bool hasFloat16Type() const override { return HasVSX; }
+
   bool isSPRegName(StringRef RegName) const override {
     return RegName == "r1" || RegName == "x1";
   }

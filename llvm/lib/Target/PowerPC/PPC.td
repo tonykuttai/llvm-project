@@ -72,6 +72,11 @@ def FeatureModernAIXAs
 def FeatureHardFloat : SubtargetFeature<"hard-float", "HasHardFloat", "true",
                               "Enable floating-point instructions">;
 
+def FeatureFloat16 :
+  SubtargetFeature<"float16",
+                   "HasFloat16", "true",
+                   "Enable half-precision floating point support">;
+
 // Specifies that we are in 64-bit mode or that we should use 64-bit registers
 // in 32-bit mode when possible. Requires Feature64Bit to be enabled.
 def Feature64BitRegs : SubtargetFeature<"64bitregs","Use64BitRegs", "true",
