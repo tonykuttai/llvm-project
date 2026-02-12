@@ -258,7 +258,8 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
   }
 
   if (Subtarget.hasFloat16()) {
-    // TypeSoftPromoteHalf handles load/store automatically
+    // Make f16 a legal type to prevent automatic promotion to f32
+    addRegisterClass(MVT::f16, &PPC::VSFRCRegClass);
 
     if (Subtarget.hasP9Vector()) {
       // P9+:Hardware instructions xscvdphp/xscvhpdp for conversions
@@ -1683,6 +1684,12 @@ bool PPCTargetLowering::useSoftFloat() const {
 
 bool PPCTargetLowering::hasSPE() const {
   return Subtarget.hasSPE();
+}
+
+bool PPCTargetLowering::useFPRegsForHalfType() const {
+  bool result = Subtarget.hasFloat16();
+  llvm::errs() << "useFPRegsForHalfType() called, returning: " << result << "\n";
+  return result;
 }
 
 bool PPCTargetLowering::preferIncOfAddToSubOfNot(EVT VT) const {
@@ -6753,6 +6760,16 @@ static bool isGPRShadowAligned(MCPhysReg Reg, Align RequiredAlign) {
 static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
                    CCValAssign::LocInfo LocInfo, ISD::ArgFlagsTy ArgFlags,
                    Type *OrigTy, CCState &State) {
+  llvm::errs() << "CC_AIX called: ValNo=" << ValNo 
+              << " ValVT.SimpleTy=" << ValVT.SimpleTy
+              << " LocVT.SimpleTy=" << LocVT.SimpleTy << "\n";
+  
+  llvm::errs() << "MVT enum check:\n"
+             << "  MVT::f16 = " << (int)MVT::f16 << "\n"
+             << "  MVT::f32 = " << (int)MVT::f32 << "\n"  
+             << "  MVT::f64 = " << (int)MVT::f64 << "\n"
+             << "  ValVT = " << (int)ValVT.SimpleTy << "\n";
+  
   const PPCSubtarget &Subtarget = static_cast<const PPCSubtarget &>(
       State.getMachineFunction().getSubtarget());
   const bool IsPPC64 = Subtarget.isPPC64();
@@ -6779,6 +6796,7 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
   const ArrayRef<MCPhysReg> GPRs = IsPPC64 ? GPR_64 : GPR_32;
 
   if (ArgFlags.isNest()) {
+    llvm::errs() << "CC_AIX: Returning early - isNest\n";
     MCRegister EnvReg = State.AllocateReg(IsPPC64 ? PPC::X11 : PPC::R11);
     if (!EnvReg)
       report_fatal_error("More then one nest argument.");
@@ -6787,6 +6805,7 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
   }
 
   if (ArgFlags.isByVal()) {
+    llvm::errs() << "CC_AIX: Returning early - isByVal\n";
     const Align ByValAlign(ArgFlags.getNonZeroByValAlign());
     if (ByValAlign > StackAlign)
       report_fatal_error("Pass-by-value arguments with alignment greater than "
@@ -6831,8 +6850,12 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
     return false;
   }
 
+  llvm::errs() << "CC_AIX: Past early returns, about to enter switch\n"  
+                << " ValVT.SimpleTy=" << ValVT.SimpleTy << "\n";
+
   // Arguments always reserve parameter save area.
   switch (ValVT.SimpleTy) {
+
   default:
     report_fatal_error("Unhandled value type for argument.");
   case MVT::i64:
@@ -6841,6 +6864,7 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
     [[fallthrough]];
   case MVT::i1:
   case MVT::i32: {
+     llvm::errs() << "CC_AIX: In i32 case\n";
     const unsigned Offset = State.AllocateStack(PtrSize, PtrAlign);
     // AIX integer arguments are always passed in register width.
     if (ValVT.getFixedSizeInBits() < RegVT.getFixedSizeInBits())
@@ -6853,8 +6877,27 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
 
     return false;
   }
+  case MVT::f16: {
+    llvm::errs() << "CC_AIX: Processing f16 parameter at ValNo=" << ValNo << "\n";
+
+    // f16 passes in FPR as 16-bit value
+    // Reserve 4 bytes in PSA (AIX always 4 byte aligns floats)
+    const unsigned Offset = State.AllocateStack(4, Align(4));
+    MCRegister FReg = State.AllocateReg(FPR);
+
+    if (FReg) {
+      llvm::errs() << "CC_AIX: Assigned f16 to FPR\n";
+      State.addLoc(CCValAssign::getReg(ValNo, ValVT, FReg, ValVT, LocInfo));
+    } else {
+      llvm::errs() << "CC_AIX: Assigned f16 to stack at offset " << Offset << "\n";
+      State.addLoc(CCValAssign::getMem(ValNo, ValVT, Offset, ValVT, LocInfo));
+    }
+
+    return false;
+  }
   case MVT::f32:
   case MVT::f64: {
+    llvm::errs() << "CC_AIX: In f32/f64 case, ValVT.SimpleTy=" << ValVT.SimpleTy << "\n";
     // Parameter save area (PSA) is reserved even if the float passes in fpr.
     const unsigned StoreSize = LocVT.getStoreSize();
     // Floats are always 4-byte aligned in the PSA on AIX.
@@ -6901,6 +6944,7 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
   case MVT::v2i64:
   case MVT::v2f64:
   case MVT::v1i128: {
+    llvm::errs() << "CC_AIX: In vector cases\n";
     const unsigned VecSize = 16;
     const Align VecAlign(VecSize);
 
@@ -7010,6 +7054,8 @@ static const TargetRegisterClass *getRegClassForSVT(MVT::SimpleValueType SVT,
   case MVT::i32:
   case MVT::i64:
     return IsPPC64 ? &PPC::G8RCRegClass : &PPC::GPRCRegClass;
+  case MVT::f16:
+    return HasVSX ? &PPC::VSFRCRegClass : &PPC::F8RCRegClass;
   case MVT::f32:
     return HasP8Vector ? &PPC::VSSRCRegClass : &PPC::F4RCRegClass;
   case MVT::f64:
@@ -7270,6 +7316,9 @@ SDValue PPCTargetLowering::LowerFormalArguments_AIX(
         switch (VA.getValVT().SimpleTy) {
         default:
           report_fatal_error("Unhandled value type for argument.");
+        case MVT::f16:
+          FuncInfo->appendParameterType(PPCFunctionInfo::ShortFloatingPoint);
+          break;
         case MVT::f32:
           FuncInfo->appendParameterType(PPCFunctionInfo::ShortFloatingPoint);
           break;
@@ -7829,6 +7878,13 @@ PPCTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
     assert(VA.isRegLoc() && "Can only return in registers!");
 
     SDValue Arg = OutVals[RealResIdx];
+    llvm::errs() << "Return value LocInfo check:\n";
+    llvm::errs() << "  VA.getLocInfo() = " << VA.getLocInfo() << "\n";
+    llvm::errs() << "  CCValAssign::Full = " << CCValAssign::Full << "\n";
+    llvm::errs() << "  CCValAssign::SExt = " << CCValAssign::SExt << "\n";
+    llvm::errs() << "  CCValAssign::ZExt = " << CCValAssign::ZExt << "\n";
+    llvm::errs() << "  CCValAssign::AExt = " << CCValAssign::AExt << "\n";
+    llvm::errs() << "  CCValAssign::FPExt = " << CCValAssign::FPExt << "\n";
 
     switch (VA.getLocInfo()) {
     default: llvm_unreachable("Unknown loc info!");
@@ -7841,6 +7897,12 @@ PPCTargetLowering::LowerReturn(SDValue Chain, CallingConv::ID CallConv,
       break;
     case CCValAssign::SExt:
       Arg = DAG.getNode(ISD::SIGN_EXTEND, dl, VA.getLocVT(), Arg);
+      break;
+    case CCValAssign::BCvt:
+      Arg = DAG.getNode(ISD::BITCAST, dl, VA.getLocVT(), Arg);
+      break;
+    case CCValAssign::FPExt: 
+      Arg = DAG.getNode(ISD::FP_EXTEND, dl, VA.getLocVT(), Arg);
       break;
     }
     if (Subtarget.hasSPE() && VA.getLocVT() == MVT::f64) {

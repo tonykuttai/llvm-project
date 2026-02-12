@@ -491,6 +491,7 @@ def ProcessorFeatures {
      FeatureP8Altivec,
      FeatureP8Vector,
      FeatureP8Crypto,
+     FeatureFloat16,
      FeatureDirectMove,
      FeatureICBT,
      FeaturePartwordAtomic,

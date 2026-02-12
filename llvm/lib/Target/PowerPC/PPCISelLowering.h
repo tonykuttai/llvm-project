@@ -212,6 +212,8 @@ namespace llvm {
 
     bool useSoftFloat() const override;
 
+    bool useFPRegsForHalfType() const override;
+
     bool hasSPE() const;
 
     MVT getScalarShiftAmountTy(const DataLayout &, EVT) const override {

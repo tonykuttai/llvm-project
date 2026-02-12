@@ -75,6 +75,9 @@ def RetCC_PPC : CallingConv<[
   CCIfType<[i64], CCAssignToReg<[X3, X4, X5, X6]>>,
   CCIfType<[i128], CCAssignToReg<[X3, X4, X5, X6]>>,
 
+  // Return f16 in FPR as 16 bit value
+  CCIfType<[f16], CCBitConvertToType<f64>>,
+
   // Floating point types returned as "direct" go into F1 .. F8; note that
   // only the ELFv2 ABI fully utilizes all these registers.
   CCIfNotSubtarget<"hasSPE()",
@@ -123,6 +126,10 @@ def CC_PPC64_ELF : CallingConv<[
   CCIfType<[i16], CCPromoteToType<i64>>,
   CCIfType<[i32], CCPromoteToType<i64>>,
   CCIfType<[i64], CCAssignToReg<[X3, X4, X5, X6, X7, X8, X9, X10]>>,
+
+  // Pass f16 in FPRs as 16-bit values
+  // Use f64 container to force FPR assignment, actual handling in lowering
+  CCIfType<[f16], CCBitConvertToType<f64>>,
 
   // Handle fp types and shadow the corresponding registers as necessary.
   CCIfType<[f32, f64], CCIfNotVarArg<CCCustom<"CC_PPC64_ELF_Shadow_GPR_Regs">>>,
@@ -217,6 +224,9 @@ def CC_PPC32_SVR4_Common : CallingConv<[
 
   // The first 8 integer arguments are passed in integer registers.
   CCIfType<[i32], CCAssignToReg<[R3, R4, R5, R6, R7, R8, R9, R10]>>,
+
+  // Pass f16 in FPRs (32-bit uses f64 container)
+  CCIfType<[f16], CCBitConvertToType<f64>>,
 
   // Make sure the i64 words from a long double are either both passed in
   // registers or both passed on the stack.
