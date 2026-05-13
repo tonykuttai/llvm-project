@@ -3575,12 +3575,6 @@ void CodeGenModule::AddDependentLib(StringRef Lib) {
 }
 
 /// Process copyright pragma and create LLVM metadata.
-/// #pragma comment(copyright, "string") embeds copyright information into the
-/// .text section of the object file as read-only data. The string is
-/// loaded into memory when the program runs and survives into the final
-/// executable or shared library.
-///
-/// Example: #pragma comment(copyright, "Copyright string")
 ///
 /// Only one copyright pragma is allowed per translation unit. Subsequent
 /// pragmas in the same TU are ignored with a warning at the parse level.
@@ -4130,11 +4124,6 @@ bool CodeGenModule::MustBeEmitted(const ValueDecl *Global) {
 }
 
 void CodeGenModule::EmitLoadTimeComment() {
-  // Emit copyright metadata for #pragma comment(copyright, ...).
-  // The LoadTimeComment is set during pragma processing and contains the
-  // copyright string that will be embedded in the .text section of the
-  // XCOFF object file and loaded into memory when the program runs.
-
   if (LoadTimeComment) {
     auto *NMD = getModule().getOrInsertNamedMetadata("comment_string.loadtime");
     NMD->addOperand(LoadTimeComment);
