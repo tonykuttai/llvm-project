@@ -1910,7 +1910,7 @@ PassBuilder::buildThinLTOPreLinkDefaultPipeline(OptimizationLevel Level) {
   // is attached. !implicit.ref metadata will travel with any function
   // imported by ThinLTO postlink.
   MPM.addPass(LowerCommentStringPass());
-  
+
   instructionCountersPass(MPM, /* IsPreOptimization */ false);
 
   return MPM;
@@ -2499,7 +2499,7 @@ PassBuilder::buildO0DefaultPipeline(OptimizationLevel Level,
   // global. Running at the end of the O0 pipeline ensures all functions
   // including AlwaysInliner-generated ones are captured.
   MPM.addPass(LowerCommentStringPass());
-  
+
   instructionCountersPass(MPM, /* IsPreOptimization */ false);
 
   return MPM;
