@@ -266,7 +266,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
   // This block intentionally overrides some actions set above
   // because when f16 is a first-class type we handle load/store
   // directly rather than through extending loads.
-  if (Subtarget.hasP8Vector() && Subtarget.hasHardFloat()) {
+  if (useFPRegsForHalfType()) {
     // Make f16 a legal type.
     addRegisterClass(MVT::f16, &PPC::VHFRCRegClass);
 
@@ -284,11 +284,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
         ISD::FNEARBYINT, ISD::FROUND,   ISD::FROUNDEVEN,  ISD::FCANONICALIZE,
         ISD::FSIN,       ISD::FCOS,     ISD::SETCC,       ISD::SELECT_CC,
         ISD::SELECT,     ISD::FLDEXP,   ISD::FFREXP,      ISD::FMODF,
-        ISD::FATAN2,     ISD::FPOWI,
-        // BR_CC has f16 operands (the comparison inputs) but a chain result.
-        // Without explicit Promote, the f16 comparison reaches SelectCC in
-        // PPCISelDAGToDAG which only knows f32/f64/f128 and asserts.
-        ISD::BR_CC};
+        ISD::FATAN2,     ISD::FPOWI,    ISD::BR_CC};
 
     // Promote all the arithmetic operations defined above to f32.
     setOperationAction(F16PromoteOps, MVT::f16, Promote);
@@ -1804,8 +1800,7 @@ bool PPCTargetLowering::hasSPE() const {
 
 /// Tell the ABI lowering infrastructure to use FPRs for f16 parameters
 /// and return values rather than GPRs whenever the hardware can hold them
-/// in VSX registers. This must not depend on -mfloat16: that flag only
-/// controls whether _Float16 is a spellable source-level type, not the ABI.
+/// in VSX registers.
 bool PPCTargetLowering::useFPRegsForHalfType() const {
   return Subtarget.hasP8Vector() && Subtarget.hasHardFloat();
 }
@@ -4807,8 +4802,9 @@ SDValue PPCTargetLowering::LowerFormalArguments_64SVR4(
       // float aggregates.
       if (FPR_idx != Num_FPR_Regs) {
         unsigned VReg;
-
-        if (ObjectVT == MVT::f32)
+        if (ObjectVT == MVT::f16)
+          VReg = MF.addLiveIn(FPR[FPR_idx], &PPC::VHFRCRegClass);
+        else if (ObjectVT == MVT::f32)
           VReg = MF.addLiveIn(FPR[FPR_idx],
                               Subtarget.hasP8Vector()
                                   ? &PPC::VSSRCRegClass
@@ -4836,6 +4832,16 @@ SDValue PPCTargetLowering::LowerFormalArguments_64SVR4(
             ArgVal = DAG.getNode(ISD::SRL, dl, MVT::i64, ArgVal,
                                  DAG.getConstant(32, dl, MVT::i32));
           ArgVal = DAG.getNode(ISD::TRUNCATE, dl, MVT::i32, ArgVal);
+        } else if (ObjectVT == MVT::f16) {
+          //  The 16 meaningfull bits sit at the byte (ArgOffset % 8) of the 8
+          //  bytes loaded into the ArgVal. Shift it down to the low 16 bits and
+          //  then narrow to i16.
+          unsigned BitInDW = ((ArgOffset % PtrByteSize) * 8);
+          unsigned Shift = (isLittleEndian ? BitInDW : 48 - BitInDW);
+          if (Shift)
+            ArgVal = DAG.getNode(ISD::SRL, dl, MVT::i64, ArgVal,
+                                 DAG.getConstant(Shift, dl, MVT::i32));
+          ArgVal = DAG.getNode(ISD::TRUNCATE, dl, MVT::i16, ArgVal);
         }
 
         ArgVal = DAG.getNode(ISD::BITCAST, dl, ObjectVT, ArgVal);
