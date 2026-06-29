@@ -7202,9 +7202,10 @@ static bool CC_AIX(unsigned ValNo, MVT ValVT, MVT LocVT,
 }
 
 // So far, this function is only used by LowerFormalArguments_AIX()
-static const TargetRegisterClass *
-getRegClassForSVT(MVT::SimpleValueType SVT, bool IsPPC64, bool HasP8Vector,
-                  bool HasVSX) {
+static const TargetRegisterClass *getRegClassForSVT(MVT::SimpleValueType SVT,
+                                                    bool IsPPC64,
+                                                    bool HasP8Vector,
+                                                    bool HasVSX) {
   assert((IsPPC64 || SVT != MVT::i64) &&
          "i64 should have been split for 32-bit codegen.");
 
@@ -7363,9 +7364,8 @@ SDValue PPCTargetLowering::LowerFormalArguments_AIX(
       continue;
 
     if (SaveParams && VA.isRegLoc() && !Flags.isByVal() && !VA.needsCustom()) {
-      const TargetRegisterClass *RegClass =
-          getRegClassForSVT(LocVT.SimpleTy, IsPPC64, Subtarget.hasP8Vector(),
-                            Subtarget.hasVSX());
+      const TargetRegisterClass *RegClass = getRegClassForSVT(
+          LocVT.SimpleTy, IsPPC64, Subtarget.hasP8Vector(), Subtarget.hasVSX());
       // On PPC64, debugger assumes extended 8-byte values are stored from GPR.
       MVT SaveVT = RegClass == &PPC::G8RCRegClass ? MVT::i64 : LocVT;
       const Register VReg = MF.addLiveIn(VA.getLocReg(), RegClass);
@@ -7590,10 +7590,10 @@ SDValue PPCTargetLowering::LowerFormalArguments_AIX(
 
     if (VA.isRegLoc() && !VA.needsCustom()) {
       MVT::SimpleValueType SVT = ValVT.SimpleTy;
-      Register VReg = MF.addLiveIn(
-          VA.getLocReg(),
-          getRegClassForSVT(SVT, IsPPC64, Subtarget.hasP8Vector(),
-                            Subtarget.hasVSX()));
+      Register VReg =
+          MF.addLiveIn(VA.getLocReg(),
+                       getRegClassForSVT(SVT, IsPPC64, Subtarget.hasP8Vector(),
+                                         Subtarget.hasVSX()));
       SDValue ArgValue = DAG.getCopyFromReg(Chain, dl, VReg, LocVT);
       if (ValVT.isScalarInteger() &&
           (ValVT.getFixedSizeInBits() < LocVT.getFixedSizeInBits())) {
